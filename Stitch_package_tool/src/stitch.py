@@ -24,7 +24,7 @@ def create_directories(aurox_dir_path):
     for n in new_dir_names:
         n_path = os.path.join(new_dirs_path, n)
         if not os.path.isdir(n_path):
-            logging.info("Creating directory" + n)
+            logging.info("Creating directory " + n)
             os.mkdir(n_path)
         current_dirs.append(n_path)
 
@@ -78,26 +78,38 @@ def ome_checker(aurox_dir_path):
     if not len(os.listdir(aurox_dir_path)) == 0:
         logging.info(os.listdir(aurox_dir_path))
         result = [x for x in os.listdir(aurox_dir_path) if x.endswith('companion.ome')]
-        for file in result:
-            if file.endswith("companion.ome"):
-                logging.info(file)
-                logging.info(
-                    "companion.ome file found.")
-                c_ome_p = os.path.join(aurox_dir_path, file)
-                c_ome_path = c_ome_p.replace("\\", "//")
-                logging.info("Companion file path: " + c_ome_path)
-                found_ome = True
-                return c_ome_path, found_ome
-            else:
-                logging.info(
-                    "No file ending in companion.ome in " + aurox_dir_path)
-                c_ome_path = ""
-                found_ome = False
-                return c_ome_path, found_ome
+        
+        if not len(result) == 0:
+            for file in result:
+                if file.endswith("companion.ome"):
+                    logging.info(file)
+                    logging.info(
+                        "companion.ome file found.")
+                    c_ome_p = os.path.join(aurox_dir_path, file)
+                    c_ome_path = c_ome_p.replace("\\", "//")
+                    logging.info("Companion file path: " + c_ome_path)
+                    found_ome = True
+                    return c_ome_path, found_ome
+                else:
+                    logging.info(
+                        "No file ending in companion.ome in " + aurox_dir_path)
+                    c_ome_path = ""
+                    found_ome = False
+                    print("Couldn't find OME for " + aurox_dir_path + "!\n Please check the channel-info and voxel size after stitching!") 
+                    return c_ome_path, found_ome
+        else:
+            logging.info(
+                "No file ending in companion.ome in " + aurox_dir_path)
+            c_ome_path = ""
+            found_ome = False
+            print("Couldn't find OME for " + aurox_dir_path + "!\n Please check the channel-info and voxel size after stitching!")
+            return c_ome_path, found_ome            
+                    
     else:
         logging.info("No files detected in " + aurox_dir_path)
         c_ome_path = ""
         found_ome = False
+        print("Couldn't find OME for " + aurox_dir_path + "!\n Please check the channel-info and voxel size after stitching!")
         return c_ome_path, found_ome
 
 
@@ -122,7 +134,7 @@ def calculate_overlap(aurox_dir_path):
            "image_output=[Fuse and display]" % abs_dirpath)
 
 
-def linear_blending(aurox_dir_path, current_dirs, c_ome_path, yes_orig):
+def linear_blending(aurox_dir_path, current_dirs, c_ome_path, yes_orig, yes_fused):
     """
         Linear blend images. It saves two images:
         A fused tiff from TileConfiguration.fixed.txt with Z axis set to 0,
@@ -139,14 +151,13 @@ def linear_blending(aurox_dir_path, current_dirs, c_ome_path, yes_orig):
     sav_fu = "%s/%s.tiff" % (current_dirs[0], prefix)
     sav_orig = "%s/%s.orig.tiff" % (current_dirs[3], prefix)
 
-    # Creates both images if 'Create image from original positions?' was
-    # checked.
-    if yes_orig:
+    # Creates image with the calculated overlap and new positions
+    if yes_fused:
         # Linear Blending
         IJ.run("Grid/Collection stitching",
                "type=[Positions from file] "
-               "order=[Defined by TileConfiguration]"
-               " directory=[%s] layout_file=TileConfiguration.fixed.txt "
+               "order=[Defined by TileConfiguration] "
+               "directory=[%s] layout_file=TileConfiguration.fixed.txt "
                "fusion_method=[Linear Blending] "
                "regression_threshold=0.30 max/avg_displacement_threshold=2.50 "
                "absolute_displacement_threshold=3.50 "
@@ -156,6 +167,9 @@ def linear_blending(aurox_dir_path, current_dirs, c_ome_path, yes_orig):
         IJ.saveAs("Tiff", sav_fu)
         IJ.run("Close All")
 
+
+    # Creates image with the original positions
+    if yes_orig:
         # Linear Blending
         IJ.run("Grid/Collection stitching",
                "type=[Positions from file] "
@@ -170,21 +184,6 @@ def linear_blending(aurox_dir_path, current_dirs, c_ome_path, yes_orig):
         IJ.saveAs("Tiff", sav_orig)
         IJ.run("Close All")
 
-    # Creates only a single image with the calculated overlap and new positions
-    else:
-        # Linear Blending
-        IJ.run("Grid/Collection stitching",
-               "type=[Positions from file] "
-               "order=[Defined by TileConfiguration] "
-               "directory=[%s] layout_file=TileConfiguration.fixed.txt "
-               "fusion_method=[Linear Blending] "
-               "regression_threshold=0.30 max/avg_displacement_threshold=2.50 "
-               "absolute_displacement_threshold=3.50 "
-               "computation_parameters=[Save computation time (but use more RAM)] "
-               "image_output=[Fuse and display]" % abs_dirpath)
-
-        IJ.saveAs("Tiff", sav_fu)
-        IJ.run("Close All")
 
     fusloc_dict[sav_fu] = [c_ome_path, current_dirs[1]]
 
@@ -255,7 +254,7 @@ def read_positions(aurox_dir_path, dir_name):
         if os.path.exists(yaml_name):
             convert_yaml_to_csv(yaml_name)
         else:
-            print(".settings or .positions.csv file not found for %s" % (dir_name))
+            logging.info(".settings or .positions.csv file not found for %s" % (dir_name))
             
     with open(positions_name, 'rb') as f:
         reader = csv.reader(f)
@@ -294,14 +293,14 @@ def read_positions(aurox_dir_path, dir_name):
 
 
 def create_tile_configuration(tiff_files_names, tiff_img_positions, dir,
-                              mult_const):
+                              mult_const, twoDim):
     """
         Creates file TileConfiguration.txt from the positions.csv file.
     """
 
     tile_conf_path = '%s/TileConfiguration.txt' % dir
     with open(tile_conf_path, 'w') as f:
-        write_header(f)
+        write_header(f, twoDim)
 
         tiff_files_names.sort()
         tiff_files_names.sort(key=len)
@@ -309,11 +308,15 @@ def create_tile_configuration(tiff_files_names, tiff_img_positions, dir,
         for (name, pos) in l:
             h = abs(int(pos[1])) * float(mult_const)
             w = abs(int(pos[2])) * float(mult_const)
-            f.write('%s     ;    ;    (    %s,    %s,    0.0    )\n' % (
-                name, h, w))
+            if twoDim:
+                f.write('%s     ;    ;    (    %s,    %s)\n' % (
+                    name, h, w))
+            else:
+                f.write('%s     ;    ;    (    %s,    %s,    0.0    )\n' % (
+                    name, h, w))
 
 
-def set_tile_configuration_z_axis_to_zero(dir):
+def set_tile_configuration_z_axis_to_zero(dir, twoDim):
     """
         Using the calculated overlap file (TileConfiguration.registered.txt)
         for linear blending causes z-axis overlap issues.
@@ -327,7 +330,7 @@ def set_tile_configuration_z_axis_to_zero(dir):
 
     with open(configuration_name, 'rb') as f:
         with open(conf_fixed_name, 'w') as fw:
-            write_header(fw)
+            write_header(fw, twoDim)
 
             line_number = 1
             line = f.readline()
@@ -338,24 +341,37 @@ def set_tile_configuration_z_axis_to_zero(dir):
                     name = name.strip()
                     position_list = positions.strip()[1:-1].split(',')
 
-                    fw.write(
-                        '%s     ;    ;    (    %s,    %s,    0.0    )\n' % (
-                            name, position_list[0], position_list[1]))
-                    #
+                    if twoDim:
+                        fw.write(
+                            '%s     ;    ;    (    %s,    %s)\n' % (
+                                name, position_list[0], position_list[1]))
+                    
+                    else:
+                        fw.write(
+                            '%s     ;    ;    (    %s,    %s,    0.0    )\n' % (
+                                name, position_list[0], position_list[1]))
 
                 line = f.readline()
                 line_number += 1
 
 
-def write_header(fw):
+def write_header(fw, twoDim):
     """
         Writes header of TileConfiguration.txt files.
     """
-    fw.write(
-"""# Define the number of dimensions we are working on
-dim = 3
+    if twoDim:
+            fw.write(
+        """# Define the number of dimensions we are working on
+        dim = 2
 
-# Define the image coordinates\n""")
+        # Define the image coordinates\n""")
+    
+    else:
+        fw.write(
+    """# Define the number of dimensions we are working on
+    dim = 3
+
+    # Define the image coordinates\n""")
 
 
 def dir_checker(aurox_dir_path):
@@ -380,7 +396,7 @@ def dir_checker(aurox_dir_path):
     return status
 
 
-def process_aurox_image(aurox_dir_path, dir_name, yes_orig, mult_const):
+def process_aurox_image(aurox_dir_path, dir_name, yes_orig, mult_const, yes_fused, twoDim):
 
     """
         Checks the directory is an image directory using dir_checker.
@@ -406,17 +422,17 @@ def process_aurox_image(aurox_dir_path, dir_name, yes_orig, mult_const):
 
         logging.info('Creating TileConfiguration.txt')
         create_tile_configuration(tiff_files_names, tiff_img_positions,
-                                  aurox_dir_path, mult_const)
+                                  aurox_dir_path, mult_const, twoDim)
 
         logging.info('Calculating overlap')
         calculate_overlap(aurox_dir_path)
 
         logging.info('Setting TileConfiguration.txt Z axis to 0')
-        set_tile_configuration_z_axis_to_zero(aurox_dir_path)
+        set_tile_configuration_z_axis_to_zero(aurox_dir_path, twoDim)
 
         logging.info('Creating fused/stitched image/s')
         fusloc_dict = linear_blending(aurox_dir_path, current_dirs, c_ome_path,
-                                      yes_orig)
+                                      yes_orig, yes_fused)
 
         return fusloc_dict, omeloc_dict
 
@@ -466,11 +482,10 @@ def ij_macro_processor(fus_tiffs_dict, py_file_loc):
 
         if fus_tiffs_dict[key][0] == '':
             logging.info('Companion file not available for' + key)
-            logging.info('Running imageJ macro on ' + key)
-            IJ.runMacroFile(stitch_path + r"\stitch_macro.ijm")
-            IJ.saveAs("tiff",
-                      fus_tiffs_dict[key][1] + '/' + os.path.basename(key))
-            IJ.run("Close All")
+            logging.info('Skipping imageJ macro for ' + key)
+            print('Companion file not available for' + key)
+            print('Skipping imageJ macro for ' + key)
+
         else:
             logging.info('Running imageJ macro on ' + key)
             IJ.runMacroFile(stitch_path + r"\stitch_macro.ijm",
@@ -529,12 +544,12 @@ def convert_yaml_to_csv(yaml_file):
     
     # Prepare CSV data
     positions = data.get('xy positions', [])
-    print(positions)
+    logging.info(positions)
     # Extract the directory and generate the new CSV filename
     directory = os.path.dirname(yaml_file)
     csv_filename = os.path.splitext(yaml_file)[0] + '.positions.csv'
     csv_filepath = os.path.join(directory, csv_filename)
-    print(csv_filepath)
+    logging.info(csv_filepath)
 
     # Write the data to CSV
     csvfile = FileWriter(csv_filepath)
@@ -563,6 +578,11 @@ def main(root_dir_path):
     logging.info('Searching for tiff series in: %s' % root_dir_path)
 
     # Uses the passed parameters from the GUI to do boolean checks.
+    if y_fused == '0':
+        yes_fused = False
+    else:
+        yes_fused = True
+    
     if y_orig == '0':
         yes_orig = False
     else:
@@ -577,12 +597,24 @@ def main(root_dir_path):
         ome_process = False
     else:
         ome_process = True
+        
+    if dimensionality == '2D':
+        twoDim = True
+    else:
+        twoDim = False    
 
-    logging.info('Create fused from original positions (Fused.orig) = '
+
+    logging.info('Create fused from computed positions (Fused) = '
+                 + str(yes_fused))
+    logging.info('Create fused from original positions (Orig.fused) = '
                  + str(yes_orig))
     logging.info('Run imageJ macro = ' + str(yes_macro))
     logging.info('Run on companion.ome file only = ' + str(ome_process))
+    logging.info('Dimensionality set as: ' + str(dimensionality))
     logging.info('Multiplier value set as: ' + str(mult_const))
+
+    if not ome_process and not yes_orig and not yes_fused:
+        logging.info('None of the stitching methods chosen! (OME, computed, original)')
 
     # First returns any companion.ome files from C_OME_FILES directory
     try:
@@ -604,12 +636,12 @@ def main(root_dir_path):
                     fus_tiffs_dict.update(fusloc_dict)
 
         # Runs stitcher using selected parameters.
-        else:
+        elif yes_orig or yes_fused:
             for root, dir_names, files in os.walk(root_dir_path):
                 for dir in dir_names:
                     aurox_dir_path = os.path.join(root, dir)
                     dir_name = os.path.basename(aurox_dir_path)
-                    fusloc_dict, omeloc_dict = process_aurox_image(aurox_dir_path, dir_name, yes_orig, mult_const)
+                    fusloc_dict, omeloc_dict = process_aurox_image(aurox_dir_path, dir_name, yes_orig, mult_const, yes_fused, twoDim)
                     fus_tiffs_dict.update(fusloc_dict)
                     comp_ome_dict.update(omeloc_dict)
 
@@ -622,7 +654,7 @@ def main(root_dir_path):
         logging.exception(str(e))
 
     # Runs macro on the FUSED_TIFFS tiffs if this option was selected.
-    if yes_macro:
+    if yes_macro and yes_fused:
         try:
             logging.info('Attempting to run Stitch '
                          'ImageJ macro on fused images.')
@@ -642,10 +674,11 @@ def main(root_dir_path):
 # this script after the user has interacted with the stitch_RUN GUI:
 
 #@String root_dir_path
+#@String y_fused
 #@String y_orig
 #@String y_macro
 #@String multiplier
 #@String ome_only
-
+#@String dimensionality
 
 main(root_dir_path)

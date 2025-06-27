@@ -24,7 +24,7 @@ class Stitch:
         # Creates label for select ImageJ.exe prompt
         self.__s_ij_prompt = Label(self.__window,
                                           text='Select ImageJ.exe file:') \
-            .grid(row=3, column=1)
+            .grid(row=3, column=1, sticky=W, padx=15)
 
         # Creates the browse button for getting the ImageJ.exe path
         Button(self.__window, text='Browse', command=self.retrieve_ijfolder) \
@@ -41,7 +41,7 @@ class Stitch:
         # Creates label for select folder prompt
         self.__s_dir_prompt = Label(self.__window,
                                           text='Select root folder:') \
-            .grid(row=5, column=1)
+            .grid(row=5, column=1, sticky=W, padx=15)
 
         # Creates the browse button for getting the root folder
         Button(self.__window, text='Browse', command=self.retrieve_rfolder) \
@@ -60,14 +60,24 @@ class Stitch:
         self.__cb_ome = Checkbutton(self.__window,
                                  text='Only use companion.ome file for stitching?',
                                  variable=self.__cb_ome_v, command=self.ome_checked)
-        self.__cb_ome.grid(row=6, column=1, sticky=W, columnspan=3)
+        self.__cb_ome.grid(row=6, column=1, sticky=W, padx=15, columnspan=3)
+
+        # Creates check button for using computed positions for stitching
+        self.__cb0_var1 = IntVar()
+        self.__cb0_var1.set(0)
+        self.__cb0 = Checkbutton(self.__window, text='Create stitched tiff using computed positions?',
+                                variable=self.__cb0_var1)
+        self.__cb0.grid(row=7, column=1, sticky=W, padx=15, columnspan=3)
+        self.__cb0.select()
 
         # Creates check button for fused_orig creation yes/no
         self.__cb1_var1 = IntVar()
         self.__cb1_var1.set(0)
         self.__cb1 = Checkbutton(self.__window, text='Create stitched tiff using original positions?',
                                 variable=self.__cb1_var1)
-        self.__cb1.grid(row=7, column=1, sticky=W, columnspan=3)
+        self.__cb1.grid(row=8, column=1, sticky=W, padx=15, columnspan=3)
+
+
 
         # Creates check button for imagej macro run yes/no
         self.__cb2_var1 = IntVar()
@@ -75,21 +85,41 @@ class Stitch:
         self.__cb2 = Checkbutton(self.__window,
                                  text='Run imageJ macro?',
                                  variable=self.__cb2_var1)
-        self.__cb2.grid(row=8, column=1, sticky=W)
+        self.__cb2.grid(row=9, column=1, sticky=W, padx=15)
+
+
+        # Dimensionality selection
+        dim_frame = Frame(self.__window)
+        dim_frame.grid(row=10, column=1, sticky=W, padx=15)
+
+        Label(dim_frame, text="Choose dimensionality").pack(anchor=W)
+
+        self.__dim_var = StringVar()
+        self.__dim_var.set("3D")  # Default selection
+
+        self.__dim_2d_rb = Radiobutton(dim_frame, text='2D',
+                                       variable=self.__dim_var, value='2D')
+        self.__dim_2d_rb.pack(side=LEFT, padx=(5, 5))
+
+        self.__dim_3d_rb = Radiobutton(dim_frame, text='3D',
+                                       variable=self.__dim_var, value='3D')
+        self.__dim_3d_rb.pack(side=LEFT)
+
+
 
         # Creates the multiplier entry input field
 
         self.__multi_prompt = Label(self.__window,
                                     text='Enter positions multiplier (Use "." not ","):') \
-            .grid(row=9, column=1)
+            .grid(row=11, column=1, sticky=W, padx=15)
 
         self.__multi_input = Entry(self.__window, width=5)
-        self.__multi_input.grid(row=9, column=2, padx=5, ipadx=5)
+        self.__multi_input.grid(row=11, column=2)
 
         # Creates the label for errors in multiplier input
 
         self.__multi_error = Label(self.__window, text='')
-        self.__multi_error.grid(row=10, column=1)
+        self.__multi_error.grid(row=12, column=1)
 
         self.__multi_errortxt = 'Multiplier input must be greater than 0!'
 
@@ -101,17 +131,17 @@ class Stitch:
                                         '10x - 1.56\n '
                                         '20x - 3.1\n '
                                         '63x - 4.9462') \
-            .grid(row=11, column=1)
+            .grid(row=13, column=1, padx=10, ipadx=5)
 
 
 
         # Creates the run button for running the simulator
-        Button(self.__window, text='Run', command=self.stitch_away) \
-            .grid(row=12, column=1, sticky=E)
+        Button(self.__window, text='Run', command=self.stitch_away, width=6) \
+            .grid(row=14, column=1, sticky=E)
 
         # Creates button for quitting the stitcher
-        Button(self.__window, text='Quit', command=self.quit_func) \
-            .grid(row=12, column=2, sticky=W)
+        Button(self.__window, text='Quit', command=self.quit_func, width=6) \
+            .grid(row=14, column=2, sticky=W)
 
         # Adds the Stitch image
         Img = PhotoImage(file=self.__img_file_loc)
@@ -148,15 +178,17 @@ class Stitch:
             
     def prompt_creator(self):
 
-        prompt_items = [str(self.__rfolder.get()), str(self.__cb1_var1.get()),
-                        str(self.__cb2_var1.get()),
-                        str(self.__multi_input.get()),
-                        str(self.__cb_ome_v.get())]
+        prompt_items = [str(self.__rfolder.get()),     # p[0]
+                        str(self.__cb0_var1.get()),    # p[1] -> y_fused
+                        str(self.__cb1_var1.get()),    # p[2] -> y_orig
+                        str(self.__cb2_var1.get()),    # p[3] -> y_macro
+                        str(self.__multi_input.get()), # p[4] -> multiplier
+                        str(self.__cb_ome_v.get()),    # p[5] -> ome_only
+                        str(self.__dim_var.get())]     # p[6] -> dimensionality
 
-        prompt = ' "root_dir_path=\'{p[0]}\',y_orig=\'{p[1]}\'' \
-                 ',y_macro=\'{p[2]}\',multiplier=\'{p[3]}\'' \
-                 ',ome_only=\'{p[4]}\'"'\
-            .format(p=prompt_items)
+        prompt = ' "root_dir_path=\'{p[0]}\',y_fused=\'{p[1]}\',y_orig=\'{p[2]}\'' \
+                 ',y_macro=\'{p[3]}\',multiplier=\'{p[4]}\'' \
+                 ',ome_only=\'{p[5]}\',dimensionality=\'{p[6]}\'"'.format(p=prompt_items)
 
         lab_prompt = self.__imgj_path.get() + " --ij2 --headless --console --run " + \
                      self.__py_file_loc + prompt
